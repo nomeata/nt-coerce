@@ -136,9 +136,18 @@ bind nttc b@(NonRec v e) | getOccString v == "coerce" = do
         [dc] = tyConDataCons nttc
     let e' = Lam a $ Lam b $ Lam nt $ Lam x $
                 Case (Var nt) nt (mkTyVarTy b)
-                    [(DataAlt dc, [co], 
-                        Cast (Var x) (CoVarCo co)
-                    )]
+                    [(DataAlt dc, [co], Cast (Var x) (CoVarCo co))]
+    return (NonRec v e')
+
+bind nttc b@(NonRec v e) | getOccString v == "refl" = do
+    dflags <- getDynFlags
+    a <- createTyVar "a"
+    let [dc] = tyConDataCons nttc
+    let e' = Lam a $ mkConApp dc
+                    [ Type (mkTyVarTy a)
+                    , Type (mkTyVarTy a)
+                    , Coercion (Refl (mkTyVarTy a))
+                    ]
     return (NonRec v e')
 
 bind nttc b@(NonRec v e) | getOccString v == "sym" = do
@@ -147,7 +156,6 @@ bind nttc b@(NonRec v e) | getOccString v == "sym" = do
     b <- createTyVar "b"
     ntu <- getUniqueM
     nttu <- getUniqueM
-    ntt'u <- getUniqueM
     cou <- getUniqueM
     let ntt = mkTyConApp nttc [mkTyVarTy a, mkTyVarTy b]
         ntt' = mkTyConApp nttc [mkTyVarTy b, mkTyVarTy a]
@@ -159,8 +167,39 @@ bind nttc b@(NonRec v e) | getOccString v == "sym" = do
                 [(DataAlt dc, [co], mkConApp dc
                     [ Type (mkTyVarTy b)
                     , Type (mkTyVarTy a)
-                    ,  Coercion (SymCo (CoVarCo co))
+                    , Coercion (SymCo (CoVarCo co))
                     ]
+                )]
+    return (NonRec v e')
+
+bind nttc b@(NonRec v e) | getOccString v == "trans" = do
+    dflags <- getDynFlags
+    a <- createTyVar "a"
+    b <- createTyVar "b"
+    c <- createTyVar "c"
+    ntu <- getUniqueM
+    nt2u <- getUniqueM
+    nttu <- getUniqueM
+    ntt'u <- getUniqueM
+    cou <- getUniqueM
+    co2u <- getUniqueM
+    let ntt = mkTyConApp nttc [mkTyVarTy a, mkTyVarTy b]
+        nt2t = mkTyConApp nttc [mkTyVarTy b, mkTyVarTy c]
+        ntt' = mkTyConApp nttc [mkTyVarTy a, mkTyVarTy c]
+        nt  = mkLocalVar VanillaId (mkSystemName ntu (mkVarOcc "nt")) ntt vanillaIdInfo
+        nt2  = mkLocalVar VanillaId (mkSystemName nt2u (mkVarOcc "nt2")) nt2t vanillaIdInfo
+        co = mkCoVar (mkSystemName cou (mkTyVarOcc "co")) (mkCoercionType (mkTyVarTy a) (mkTyVarTy b))
+        co2 = mkCoVar (mkSystemName co2u (mkTyVarOcc "co2")) (mkCoercionType (mkTyVarTy b) (mkTyVarTy c))
+        [dc] = tyConDataCons nttc
+    let e' = Lam a $ Lam b $ Lam c $ Lam nt $ Lam nt2 $
+            Case (Var nt) nt ntt'
+                [(DataAlt dc, [co], Case (Var nt2) nt2 ntt' 
+                    [(DataAlt dc, [co2], mkConApp dc
+                        [ Type (mkTyVarTy a)
+                        , Type (mkTyVarTy c)
+                        , Coercion (TransCo (CoVarCo co) (CoVarCo co2))
+                        ]
+                    )]
                 )]
     return (NonRec v e')
 

@@ -42,7 +42,7 @@ ntPass g | moduleNameString (moduleName (mg_module g)) == "GHC.NT" = do
 ntPass g = return g
 
 nt2Pass :: ModGuts -> CoreM ModGuts
-nt2Pass = bindsOnlyPass $ mapM bind2
+nt2Pass = bindsOnlyPass $ mapM (traverseBind replaceCreateNT)
 
 createNTTyCon :: Module -> TyCon -> CoreM TyCon
 createNTTyCon mod oldTyCon = do
@@ -190,11 +190,6 @@ bind _ b = do
     dflags <- getDynFlags
     --putMsgS $ showSDoc dflags (ppr b)
     return b
-
-bind2 :: CoreBind -> CoreM CoreBind
-bind2 (NonRec v e) = NonRec v <$> traverse replaceCreateNT e
-bind2 (Rec binds) = Rec <$> mapM (\(v,e) -> (\e' -> (v,e')) <$> traverse replaceCreateNT e) binds
-
 
 replaceCreateNT :: CoreExpr -> CoreM (Maybe CoreExpr)
 replaceCreateNT e@((App (App (Var f) (Type ta)) (Type tb)))

@@ -49,6 +49,8 @@ createNTTyCon mod oldTyCon = do
     dataConU <- getUniqueM
     dataConWorkerU <- getUniqueM
     dataConWrapperU <- getUniqueM
+    coAxiomU <- getUniqueM
+    coAxiomNameU <- getUniqueM
     let cot = mkCoercionType (mkTyVarTy a) (mkTyVarTy b)
         rett = mkTyConApp t' arg_tys
         dct = mkForAllTys [a,b] $ mkFunTy cot rett
@@ -57,6 +59,7 @@ createNTTyCon mod oldTyCon = do
         --tcn = mkExternalName tyConU mod (mkTcOcc "NT") noSrcSpan
         tcn = tyConName oldTyCon
         n = mkExternalName dataConU mod (mkDataOcc "NT") noSrcSpan
+        coAxiomN = mkExternalName coAxiomNameU mod (mkNewTyCoOcc (occName (tcn))) noSrcSpan
         dataConWorkerN = mkSystemName dataConWorkerU (mkDataOcc "NT_work")
         dataConWrapperN = mkSystemName dataConWrapperU (mkDataOcc "NT_wrap")
         workId = mkGlobalId (DataConWrapId dc') dataConWorkerN dct vanillaIdInfo
@@ -75,13 +78,20 @@ createNTTyCon mod oldTyCon = do
                 t'
                 []
                 dataConIds -- (DCIds Nothing workId)
+        coa = CoAxiom
+                coAxiomU
+                coAxiomN
+                [a,b]
+                rett
+                cot
+                True
         t' = mkAlgTyCon
                tcn 
                (mkArrowKinds [liftedTypeKind, liftedTypeKind] liftedTypeKind)
                [a,b]
                Nothing
                []
-               (DataTyCon [dc'] False)
+               (NewTyCon dc' cot ([a,b], cot) coa)
                NoParentTyCon
                NonRecursive
                False
@@ -126,10 +136,10 @@ bind nttc b@(NonRec v e) | getOccString v == "coerce" = do
         nt  = mkLocalVar VanillaId (mkSystemName ntu (mkVarOcc "nt")) ntt vanillaIdInfo
         x   = mkLocalVar VanillaId (mkSystemName xu (mkVarOcc "b")) (mkTyVarTy a) vanillaIdInfo
         co = mkCoVar (mkSystemName cou (mkTyVarOcc "co")) (mkCoercionType (mkTyVarTy a) (mkTyVarTy b))
-        [dc] = tyConDataCons nttc
+        coAxiom = newTyConCo nttc
     let e' = Lam a $ Lam b $ Lam nt $ Lam x $
-                Case (Var nt) nt (mkTyVarTy b)
-                    [(DataAlt dc, [co], Cast (Var x) (CoVarCo co))]
+                App (Lam co (Cast (Var x) (CoVarCo co))) $ 
+                Cast (Var nt) (AxiomInstCo coAxiom [Refl (mkTyVarTy a), Refl (mkTyVarTy b)])
     return (NonRec v e')
 
 bind nttc b@(NonRec v e) | getOccString v == "refl" = do
@@ -153,14 +163,15 @@ bind nttc b@(NonRec v e) | getOccString v == "sym" = do
         nt  = mkLocalVar VanillaId (mkSystemName ntu (mkVarOcc "nt")) ntt vanillaIdInfo
         co = mkCoVar (mkSystemName cou (mkTyVarOcc "co")) (mkCoercionType (mkTyVarTy a) (mkTyVarTy b))
         [dc] = tyConDataCons nttc
+        coAxiom = newTyConCo nttc
     let e' = Lam a $ Lam b $ Lam nt $
-            Case (Var nt) nt ntt'
-                [(DataAlt dc, [co], mkConApp dc
+                App (Lam co $ mkConApp dc
                     [ Type (mkTyVarTy b)
                     , Type (mkTyVarTy a)
                     , Coercion (SymCo (CoVarCo co))
                     ]
-                )]
+                ) $
+                Cast (Var nt) (AxiomInstCo coAxiom [Refl (mkTyVarTy a), Refl (mkTyVarTy b)])
     return (NonRec v e')
 
 bind nttc b@(NonRec v e) | getOccString v == "trans" = do
@@ -181,16 +192,19 @@ bind nttc b@(NonRec v e) | getOccString v == "trans" = do
         co = mkCoVar (mkSystemName cou (mkTyVarOcc "co")) (mkCoercionType (mkTyVarTy a) (mkTyVarTy b))
         co2 = mkCoVar (mkSystemName co2u (mkTyVarOcc "co2")) (mkCoercionType (mkTyVarTy b) (mkTyVarTy c))
         [dc] = tyConDataCons nttc
+        coAxiom = newTyConCo nttc
     let e' = Lam a $ Lam b $ Lam c $ Lam nt $ Lam nt2 $
-            Case (Var nt) nt ntt'
-                [(DataAlt dc, [co], Case (Var nt2) nt2 ntt' 
-                    [(DataAlt dc, [co2], mkConApp dc
+                App (Lam co $ 
+                    App (Lam co2 $ mkConApp dc
                         [ Type (mkTyVarTy a)
                         , Type (mkTyVarTy c)
                         , Coercion (TransCo (CoVarCo co) (CoVarCo co2))
                         ]
-                    )]
-                )]
+                    ) $
+                    Cast (Var nt2) (AxiomInstCo coAxiom [Refl (mkTyVarTy b), Refl (mkTyVarTy c)])
+
+                ) $
+                Cast (Var nt) (AxiomInstCo coAxiom [Refl (mkTyVarTy a), Refl (mkTyVarTy b)])
     return (NonRec v e')
 
 bind nttc b@(NonRec v e) | getOccString v == "listNT" = do
@@ -205,14 +219,15 @@ bind nttc b@(NonRec v e) | getOccString v == "listNT" = do
         nt  = mkLocalVar VanillaId (mkSystemName ntu (mkVarOcc "nt")) ntt vanillaIdInfo
         co = mkCoVar (mkSystemName cou (mkTyVarOcc "co")) (mkCoercionType (mkTyVarTy a) (mkTyVarTy b))
         [dc] = tyConDataCons nttc
+        coAxiom = newTyConCo nttc
     let e' = Lam a $ Lam b $ Lam nt $
-            Case (Var nt) nt ntt' 
-                [(DataAlt dc, [co], mkConApp dc
+            App (Lam co $ mkConApp dc
                     [ Type (mkTyConApp listTyCon [mkTyVarTy a])
                     , Type (mkTyConApp listTyCon [mkTyVarTy b])
                     ,  Coercion (TyConAppCo listTyCon [CoVarCo co])
                     ]
-                )]
+            ) $
+            Cast (Var nt) (AxiomInstCo coAxiom [Refl (mkTyVarTy a), Refl (mkTyVarTy b)])
     return (NonRec v e')
 
 bind _ b = do

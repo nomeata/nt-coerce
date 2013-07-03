@@ -29,14 +29,10 @@ ntPass g | moduleNameString (moduleName (mg_module g)) == "GHC.NT.Type" = do
     nttc <- createNTTyCon (mg_module g) oldTc
     tcs' <- mapM (replaceTyCon nttc) (mg_tcs g)
 
-    dflags <- getDynFlags
     return $ g { mg_tcs = tcs' }
 ntPass g | moduleNameString (moduleName (mg_module g)) == "GHC.NT" = do
-    nttc <- lookupNTTyCon (mg_module g)
+    nttc <- lookupNTTyCon (mg_rdr_env g) (mg_module g)
     binds' <- mapM (bind nttc) (mg_binds g)
-
-    dflags <- getDynFlags
-    dflags <- getDynFlags
 
     return $ g { mg_binds = binds' }
 ntPass g = return g
@@ -96,31 +92,28 @@ replaceTyCon nttc t
     | occNameString (nameOccName (tyConName t)) == "NT" = return nttc
     | otherwise = return t
 
-lookupNTTyCon :: Module -> CoreM TyCon
-lookupNTTyCon mod = do
+lookupNTTyCon :: GlobalRdrEnv -> Module -> CoreM TyCon
+lookupNTTyCon env mod = do
     let packageId = modulePackageId mod -- HACK!
     let ntTypeModule = mkModule packageId (mkModuleName "GHC.NT.Type")
-    nc <- getOrigNameCache
+    let rdrName = mkRdrQual (mkModuleName "GHC.NT.Type") (mkTcOcc "NT")
 
-    dflags <- getDynFlags
-    --putMsgS $ showSDoc dflags (ppr (moduleEnvKeys nc))
-    --putMsgS $ showSDoc dflags (ppr ntTypeModule)
+    let e' = head (head (occEnvElts env)) -- HACK
+    
+    {-
+    putMsg (ppr e')
+    putMsg (ppr rdrName)
+    putMsg (ppr (lookupGRE_RdrName rdrName env))
+    putMsg (ppr (lookupGRE_RdrName (nameRdrName (gre_name e')) env))
+    
+    let [e] = lookupGRE_RdrName rdrName env
+    -}
 
-    -- HACK!
-    let ntTypeModule = last (moduleEnvKeys nc) -- Why does the other not work?
-    --putMsgS $ showSDoc dflags (ppr ntTypeModule)
-
-    let Just occEnv = lookupModuleEnv nc ntTypeModule
-
-    --putMsgS $ showSDoc dflags (ppr (occEnv)) 
-    -- let Just ntTyConName = lookupOccEnv occEnv (mkTcOccFS (fsLit "NT")) -- Why does this not work?
-    -- MORE HACKS!
-    let [ntTyConName] = occEnvElts occEnv
-    lookupTyCon ntTyConName
+    let n = gre_name e'
+    lookupTyCon n
 
 bind :: TyCon -> CoreBind -> CoreM CoreBind
 bind nttc b@(NonRec v e) | getOccString v == "coerce" = do
-    dflags <- getDynFlags
     au <- getUniqueM
     bu <- getUniqueM
     ntu <- getUniqueM
@@ -140,7 +133,6 @@ bind nttc b@(NonRec v e) | getOccString v == "coerce" = do
     return (NonRec v e')
 
 bind nttc b@(NonRec v e) | getOccString v == "refl" = do
-    dflags <- getDynFlags
     a <- createTyVar "a"
     let [dc] = tyConDataCons nttc
     let e' = Lam a $ mkConApp dc
@@ -151,7 +143,6 @@ bind nttc b@(NonRec v e) | getOccString v == "refl" = do
     return (NonRec v e')
 
 bind nttc b@(NonRec v e) | getOccString v == "sym" = do
-    dflags <- getDynFlags
     a <- createTyVar "a"
     b <- createTyVar "b"
     ntu <- getUniqueM
@@ -173,7 +164,6 @@ bind nttc b@(NonRec v e) | getOccString v == "sym" = do
     return (NonRec v e')
 
 bind nttc b@(NonRec v e) | getOccString v == "trans" = do
-    dflags <- getDynFlags
     a <- createTyVar "a"
     b <- createTyVar "b"
     c <- createTyVar "c"
@@ -226,8 +216,7 @@ bind nttc b@(NonRec v e) | getOccString v == "listNT" = do
     return (NonRec v e')
 
 bind _ b = do
-    dflags <- getDynFlags
-    --putMsgS $ showSDoc dflags (ppr b)
+    --putMsg (ppr b)
     return b
 
 replaceCreateNT :: CoreExpr -> CoreM (Maybe CoreExpr)
@@ -244,22 +233,20 @@ replaceCreateNT e@((App (App (Var f) (Type ta)) (Type tb)))
         -- TODO: Check if all construtors are in scope
         -- TODO: Check that the expanded type of a is actually b
 
-        dflags <- getDynFlags
-        --putMsgS $ showSDoc dflags (ppr e)
+        --putMsg (ppr e)
         -- Extract the typcon from f's type
         let nttc = tyConAppTyCon (exprType e)
         let [dc] = tyConDataCons nttc
         let e' = mkConApp dc [ Type ta, Type tb, Coercion (mkAxInstCo coa tyArgs)] :: CoreExpr
-        --putMsgS $ showSDoc dflags (ppr nttc)
-        --putMsgS $ showSDoc dflags (ppr (tyConDataCons nttc))
-        --putMsgS $ showSDoc dflags (ppr e')
+        --putMsg (ppr nttc)
+        --putMsg (ppr (tyConDataCons nttc))
+        --putMsg (ppr e')
         return (Just e')
     | otherwise = do
         --putMsgS $ getOccString f
         return Nothing
 replaceCreateNT e = do
-    --dflags <- getDynFlags
-    --putMsgS $ showSDoc dflags (ppr e)
+    --putMsg (ppr e)
     return Nothing
 
 traverse :: (Functor m, Applicative m, Monad m) => (Expr a -> m (Maybe (Expr a))) -> Expr a -> m (Expr a)

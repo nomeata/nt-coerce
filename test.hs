@@ -18,6 +18,11 @@ myListNT = deriveThisNT
 foo :: NT a b -> NT (MyList a) (MyList b)
 foo = deriveThisNT
 
+newtype R a = R [R a] deriving Show
+
+rNT :: NT (R a) [R a]
+rNT = deriveThisNT
+
 -- Would not work (but is removed anyways before it is seen by GHC.NT.Plugin)
 bar :: NT (MyList Age) [Int]
 bar = deriveThisNT
@@ -33,4 +38,5 @@ main = do
     print l3
     print $ coerce (foo (sym ageNT)) l3
     --print $ coerce bar (MyList [a])
+    print $ coerce (sym rNT) []
 

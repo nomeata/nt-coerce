@@ -119,9 +119,8 @@ bind nttc b@(NonRec v e) | getOccString v == "coerce" = do
     NonRec v <$> do
     tyLam "a" $ \a -> do
     tyLam "b" $ \b -> do
-    lam "nt" (mkTyConApp nttc [mkTyVarTy a, mkTyVarTy b]) $ \nt -> do
+    lamNT nttc "co" (mkTyVarTy a) (mkTyVarTy b) $ \co -> do 
     lam "x" (mkTyVarTy a) $ \x -> do
-    deconNT "co" (Var nt) $ \co -> do
     return $ Cast (Var x) (CoVarCo co)
 
 bind nttc b@(NonRec v e) | getOccString v == "refl" = do
@@ -134,8 +133,7 @@ bind nttc b@(NonRec v e) | getOccString v == "sym" = do
     NonRec v <$> do
     tyLam "a" $ \a -> do
     tyLam "b" $ \b -> do
-    lam "nt" (mkTyConApp nttc [mkTyVarTy a, mkTyVarTy b]) $ \nt -> do
-    deconNT "co" (Var nt) $ \co -> do
+    lamNT nttc "co" (mkTyVarTy a) (mkTyVarTy b) $ \co -> do
     conNT nttc $ do
     return $ SymCo (CoVarCo co)
 
@@ -144,10 +142,8 @@ bind nttc b@(NonRec v e) | getOccString v == "trans" = do
     tyLam "a" $ \a -> do
     tyLam "b" $ \b -> do
     tyLam "c" $ \c -> do
-    lam "nt1" (mkTyConApp nttc [mkTyVarTy a, mkTyVarTy b]) $ \nt1 -> do
-    lam "nt2" (mkTyConApp nttc [mkTyVarTy b, mkTyVarTy c]) $ \nt2 -> do
-    deconNT "co1" (Var nt1) $ \co1 -> do
-    deconNT "co2" (Var nt2) $ \co2 -> do
+    lamNT nttc "co1" (mkTyVarTy a) (mkTyVarTy b) $ \co1 -> do
+    lamNT nttc "co2" (mkTyVarTy b) (mkTyVarTy c) $ \co2 -> do
     conNT nttc $ do
     return $ TransCo (CoVarCo co1) (CoVarCo co2)
 
@@ -155,8 +151,7 @@ bind nttc b@(NonRec v e) | getOccString v == "listNT" = do
     NonRec v <$> do
     tyLam "a" $ \a -> do
     tyLam "b" $ \b -> do
-    lam "nt" (mkTyConApp nttc [mkTyVarTy a, mkTyVarTy b]) $ \nt -> do
-    deconNT "co" (Var nt) $ \co -> do
+    lamNT nttc "co" (mkTyVarTy a) (mkTyVarTy b) $ \co -> do
     conNT nttc $ do
     return $ TyConAppCo listTyCon [CoVarCo co]
 
@@ -237,6 +232,11 @@ deconNT name nt body = do
         [dc] = tyConDataCons nttc
     b <- body co
     return $ mkWildCase nt ntType (exprType b) [(DataAlt dc, [co], b)]
+
+lamNT :: TyCon -> String -> Type -> Type -> (CoVar -> CoreM CoreExpr) -> CoreM CoreExpr
+lamNT nttc name t1 t2 body = do
+    lam (name ++ "nt") (mkTyConApp nttc [t1, t2]) $ \nt -> do
+    deconNT name (Var nt) $ body
 
 conNT :: TyCon -> CoreM Coercion -> CoreM CoreExpr
 conNT nttc body = do

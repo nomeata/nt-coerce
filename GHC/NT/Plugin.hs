@@ -33,7 +33,7 @@ ntPass g | moduleNameString (moduleName (mg_module g)) == "GHC.NT.Type" = do
 
     return $ g { mg_tcs = tcs' }
 ntPass g | moduleNameString (moduleName (mg_module g)) == "GHC.NT" = do
-    nttc <- lookupNTTyCon (mg_rdr_env g) (mg_module g)
+    nttc <- lookupNTTyCon (mg_rdr_env g)
     binds' <- mapM (bind nttc) (mg_binds g)
 
     return $ g { mg_binds = binds' }
@@ -41,7 +41,7 @@ ntPass g = return g
 
 nt2Pass :: ModGuts -> CoreM ModGuts
 nt2Pass g = do
-    nttc <- lookupNTTyCon (mg_rdr_env g) (mg_module g)
+    nttc <- lookupNTTyCon (mg_rdr_env g)
     --putMsg (ppr nttc)
     binds' <- mapM (traverseBind (replaceDeriveThisNT nttc)) (mg_binds g)
     return $ g { mg_binds = binds' }
@@ -98,25 +98,12 @@ replaceTyCon nttc t
     | occNameString (nameOccName (tyConName t)) == "NT" = return nttc
     | otherwise = return t
 
-lookupNTTyCon :: GlobalRdrEnv -> Module -> CoreM TyCon
-lookupNTTyCon env mod = do
-    let packageId = modulePackageId mod -- HACK!
-    let ntTypeModule = mkModule packageId (mkModuleName "GHC.NT.Type")
-    let rdrName = mkRdrQual (mkModuleName "GHC.NT.Type") (mkTcOcc "NT")
-
-    let e' = head (head (occEnvElts env)) -- HACK
-    
-    {-
-    putMsg (ppr e')
-    putMsg (ppr rdrName)
-    putMsg (ppr (lookupGRE_RdrName rdrName env))
-    putMsg (ppr (lookupGRE_RdrName (nameRdrName (gre_name e')) env))
-    
-    let [e] = lookupGRE_RdrName rdrName env
-    -}
-
-    let n = gre_name e'
+lookupNTTyCon :: GlobalRdrEnv -> CoreM TyCon
+lookupNTTyCon env = do
+    let Just n = find isNT (map gre_name (concat (occEnvElts env)))
     lookupTyCon n
+  where
+    isNT n = let oN = occName n in occNameString oN == "NT" && occNameSpace oN == tcClsName
 
 
 bind :: TyCon -> CoreBind -> CoreM CoreBind

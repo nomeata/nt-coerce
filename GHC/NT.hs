@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -fplugin GHC.NT.Plugin #-}
 
-module GHC.NT (NT, coerce, refl, sym, trans, createNT, listNT) where
+module GHC.NT (NT, coerce, refl, sym, trans, deriveThisNT) where
 
 import GHC.NT.Type
 
@@ -16,10 +16,7 @@ sym = error "GHC.NT.sym"
 trans  :: NT a b -> NT b c -> NT a c
 trans = error "GHC.NT.trans"
 
-createNT :: NT a b
-createNT = error "GHC.NT.createNT"
-{-# NOINLINE createNT #-}
-
-listNT :: NT a b -> NT [a] [b]
-listNT = error "GHC.NT.liftNT"
+deriveThisNT :: a
+deriveThisNT = error "left over deriveThis. Did GHC.NT.Plugin run?"
+{-# NOINLINE deriveThisNT #-}
 

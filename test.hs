@@ -2,16 +2,21 @@
 
 import GHC.NT
 
+listNT :: NT a b -> NT [a] [b]
+listNT = deriveThisNT
+
 newtype Age = Age Int deriving Show
 
 ageNT :: NT Age Int
-ageNT = createNT
+ageNT = deriveThisNT
 
 newtype MyList a = MyList [a] deriving Show
 
 myListNT :: NT (MyList a) [a]
-myListNT = createNT
+myListNT = deriveThisNT
 
+foo :: NT a b -> NT (MyList a) (MyList b)
+foo = deriveThisNT
 
 main = do
     let n = 1 :: Int
@@ -22,4 +27,4 @@ main = do
     print a
     print l2
     print l3
-
+    print $ coerce (foo (sym ageNT)) l3

@@ -27,6 +27,11 @@ rNT = deriveThisNT
 bar :: NT (MyList Age) [Int]
 bar = deriveThisNT
 
+data F a b c = F a b c deriving Show
+
+fNT :: NT a a' -> NT (F a b c) (F a' b c)
+fNT = deriveThisNT
+
 main = do
     let n = 1 :: Int
     let a = coerce (sym ageNT) 1
@@ -39,4 +44,5 @@ main = do
     print $ coerce (foo (sym ageNT)) l3
     --print $ coerce bar (MyList [a])
     print $ coerce (sym rNT) []
+    print $ coerce (fNT (sym ageNT)) (F 1 2 3)
 

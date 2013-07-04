@@ -173,6 +173,8 @@ findCoercion t1 t2 = find go
 -- between them
 deriveNT :: TyCon -> [Coercion] -> Type -> Type -> CoreM Coercion
 deriveNT nttc cos t1 t2
+    | t1 `eqType` t2 = do
+        return $ Refl t1
     | Just (tc1,tyArgs1) <- splitTyConApp_maybe t1,
       Just (tc2,tyArgs2) <- splitTyConApp_maybe t2,
       tc1 == tc2 = do

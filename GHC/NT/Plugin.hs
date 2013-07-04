@@ -160,18 +160,24 @@ deriveNT nttc cos t1 t2
                 let rhs = newTyConInstRhs tc tyArgs
                 if t2 `eqType` rhs
                   then return $ mkAxInstCo coAxiom tyArgs
-                  else pprPgmError "deriveThisNT does not know how to derive an NT value relating" $  
-                        ppr t1 $$ ppr t2 $$ 
-                        text "The former is a newtype of" $$ ppr (newTyConInstRhs tc tyArgs)
-            Nothing -> 
-                pprPgmError "deriveThisNT does not know how to derive an NT value relating" $  
-                    ppr t1 $$ ppr t2 $$ 
-                    text "The former is not a newtype."
+                  else err_wrong_newtype rhs
+            Nothing -> err_not_newtype
     | Just usable <- findCoercion t1 t2 cos = do
         return usable
-    | otherwise = do
+    | otherwise = err_no_idea_what_to_do
+  where
+    err_wrong_newtype rhs =
+        pprPgmError "deriveThisNT does not know how to derive an NT value relating" $  
+            ppr t1 $$ ppr t2 $$ 
+            text "The former is a newtype of" $$ ppr rhs
+    err_not_newtype = 
+        pprPgmError "deriveThisNT does not know how to derive an NT value relating" $  
+            ppr t1 $$ ppr t2 $$ 
+            text "The former is not a newtype."
+    err_no_idea_what_to_do =
         pprSorry "deriveThisNT does not know how to derive an NT value relating" $  
             ppr t1 $$ ppr t2
+
 
 isNTType :: TyCon -> Type -> Maybe (Type, Type)
 isNTType nttc t | Just (tc,[t1,t2]) <- splitTyConApp_maybe t, tc == nttc = Just (t1,t2)
@@ -185,10 +191,14 @@ deriveNTFun nttc cos t
             Just (t1,t2) -> do
                 lamNT nttc "nt" t1 t2 $ \co -> 
                     deriveNTFun nttc (CoVarCo co:cos) rt
-            Nothing -> pprPgmError "deriveNTFun cannot handle arguments of non-NT-type:" $ ppr at
+            Nothing -> err_non_NT_argument at
     | Just (t1,t2) <- isNTType nttc t = do
         conNT nttc $ deriveNT nttc cos t1 t2
-    | otherwise = do
+    | otherwise = err_no_idea_what_to_do
+  where
+    err_non_NT_argument at = 
+        pprPgmError "deriveNTFun cannot handle arguments of non-NT-type:" $ ppr at
+    err_no_idea_what_to_do =
         pprPgmError "deriveThisNT does not know how to derive code of type:" $  ppr t
 
 replaceDeriveThisNT :: TyCon -> CoreExpr -> CoreM (Maybe CoreExpr)

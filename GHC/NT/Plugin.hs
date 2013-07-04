@@ -13,6 +13,10 @@ import Data.Functor
 import Data.Maybe
 import Data.List
 
+--
+-- General plugin pass setup
+--
+
 plugin :: Plugin
 plugin = defaultPlugin {
     installCoreToDos = install
@@ -45,6 +49,10 @@ nt2Pass g = do
     --putMsg (ppr nttc)
     binds' <- mapM (traverseBind (replaceDeriveThisNT nttc)) (mg_binds g)
     return $ g { mg_binds = binds' }
+
+--
+-- Definition of the NT data constructor (which cannot be written in Haskell)
+-- 
 
 createNTTyCon :: Module -> TyCon -> CoreM TyCon
 createNTTyCon mod oldTyCon = do
@@ -93,18 +101,26 @@ createNTTyCon mod oldTyCon = do
                False
     return t'
 
+-- | This replaces the dummy NT type constuctor by our generated one
 replaceTyCon :: TyCon -> TyCon -> CoreM TyCon
 replaceTyCon nttc t 
     | occNameString (nameOccName (tyConName t)) == "NT" = return nttc
     | otherwise = return t
 
+-- | In later modules, fetching the NT type constructor 
 lookupNTTyCon :: GlobalRdrEnv -> CoreM TyCon
 lookupNTTyCon env = do
     let Just n = find isNT (map gre_name (concat (occEnvElts env)))
     lookupTyCon n
   where
-    isNT n = let oN = occName n in occNameString oN == "NT" && occNameSpace oN == tcClsName
+    isNT n = let oN = occName n in
+        occNameString oN == "NT" &&
+        occNameSpace oN == tcClsName &&
+        moduleNameString (moduleName (nameModule n)) == "GHC.NT.Type"
 
+--
+-- Implementation of the pass that produces GHC.NT
+--
 
 bind :: TyCon -> CoreBind -> CoreM CoreBind
 bind nttc b@(NonRec v e) | getOccString v == "coerce" = do
@@ -143,10 +159,18 @@ bind _ b = do
     --putMsg (ppr b)
     return b
 
+
+--
+-- Implementation of "deriving foo :: ... -> NT t1 t2"
+--
+
+-- Tries to find a coercion between the given types in the list of coercions
 findCoercion :: Type -> Type -> [Coercion] -> Maybe Coercion
 findCoercion t1 t2 = find go
   where go c = let Pair t1' t2' = coercionKind c in t1' `eqType` t1 && t2' `eqType` t2
 
+-- Given two types (and a few coercions to use), tries to construct a coercion
+-- between them
 deriveNT :: TyCon -> [Coercion] -> Type -> Type -> CoreM Coercion
 deriveNT nttc cos t1 t2
     | Just (tc1,tyArgs1) <- splitTyConApp_maybe t1,
@@ -156,7 +180,7 @@ deriveNT nttc cos t1 t2
     | Just (tc,tyArgs) <- splitTyConApp_maybe t1 = do
         case unwrapNewTyCon_maybe tc of
             Just (tyVars, tyExpanded, coAxiom) -> do
-                putMsg (ppr (unwrapNewTyCon_maybe tc))
+                -- putMsg (ppr (unwrapNewTyCon_maybe tc))
                 let rhs = newTyConInstRhs tc tyArgs
                 if t2 `eqType` rhs
                   then return $ mkAxInstCo coAxiom tyArgs
@@ -179,11 +203,13 @@ deriveNT nttc cos t1 t2
             ppr t1 $$ ppr t2
 
 
+-- Check if a type if of type NT t1 t2, and returns t1 and t2
 isNTType :: TyCon -> Type -> Maybe (Type, Type)
 isNTType nttc t | Just (tc,[t1,t2]) <- splitTyConApp_maybe t, tc == nttc = Just (t1,t2)
                 | otherwise = Nothing
 
 
+-- Creates the body of a "deriving foo :: ... -> NT t1 t2" function
 deriveNTFun :: TyCon -> [Coercion] -> Type -> CoreM CoreExpr
 deriveNTFun nttc cos t
     | Just (at, rt) <- splitFunTy_maybe t = do
@@ -201,6 +227,7 @@ deriveNTFun nttc cos t
     err_no_idea_what_to_do =
         pprPgmError "deriveThisNT does not know how to derive code of type:" $  ppr t
 
+-- Replace every occurrence of the magic 'deriveThisNT' by a valid implementation
 replaceDeriveThisNT :: TyCon -> CoreExpr -> CoreM (Maybe CoreExpr)
 replaceDeriveThisNT nttc e@(App (Var f) (Type t))
     | getOccString f == "deriveThisNT" = Just <$> deriveNTFun nttc [] t
@@ -208,6 +235,11 @@ replaceDeriveThisNT _ e = do
     --putMsg (ppr e)
     return Nothing
 
+--
+-- General utilities
+-- 
+
+-- Replace an expression everywhere
 traverse :: (Functor m, Applicative m, Monad m) => (Expr a -> m (Maybe (Expr a))) -> Expr a -> m (Expr a)
 traverse f e
     = f' =<< case e of
@@ -228,6 +260,8 @@ traverse f e
 traverseBind :: (Functor m, Applicative m, Monad m) => (Expr a -> m (Maybe (Expr a))) -> Bind a -> m (Bind a)
 traverseBind f (NonRec b e) = NonRec b <$> traverse f e
 traverseBind f (Rec l) = Rec <$> mapM (\(a,b) -> (a,) <$> traverse f b) l
+
+-- Convenient Core creating functions
 
 createTyVar :: String -> CoreM TyVar
 createTyVar name = do

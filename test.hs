@@ -18,6 +18,10 @@ myListNT = deriveThisNT
 foo :: NT a b -> NT (MyList a) (MyList b)
 foo = deriveThisNT
 
+-- Would not work (but is removed anyways before it is seen by GHC.NT.Plugin)
+bar :: NT (MyList Age) [Int]
+bar = deriveThisNT
+
 main = do
     let n = 1 :: Int
     let a = coerce (sym ageNT) 1
@@ -28,3 +32,5 @@ main = do
     print l2
     print l3
     print $ coerce (foo (sym ageNT)) l3
+    --print $ coerce bar (MyList [a])
+

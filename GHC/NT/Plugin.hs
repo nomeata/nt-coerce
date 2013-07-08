@@ -103,20 +103,20 @@ createNTTyCon mod oldTyCon = do
 
 -- | This replaces the dummy NT type constuctor by our generated one
 replaceTyCon :: TyCon -> TyCon -> CoreM TyCon
-replaceTyCon nttc t 
-    | occNameString (nameOccName (tyConName t)) == "NT" = return nttc
-    | otherwise = return t
+replaceTyCon nttc tc = return $ if isNT (tyConName tc) then nttc else tc
 
 -- | In later modules, fetching the NT type constructor 
 lookupNTTyCon :: GlobalRdrEnv -> CoreM TyCon
 lookupNTTyCon env = do
     let Just n = find isNT (map gre_name (concat (occEnvElts env)))
     lookupTyCon n
-  where
-    isNT n = let oN = occName n in
-        occNameString oN == "NT" &&
-        occNameSpace oN == tcClsName &&
-        moduleNameString (moduleName (nameModule n)) == "GHC.NT.Type"
+
+-- | Checks if the given name is the type constructor 'GHC.NT.Type.NT'
+isNT :: Name -> Bool
+isNT n = let oN = occName n in
+    occNameString oN == "NT" &&
+    occNameSpace oN == tcClsName &&
+    moduleNameString (moduleName (nameModule n)) == "GHC.NT.Type"
 
 --
 -- Implementation of the pass that produces GHC.NT

@@ -47,7 +47,7 @@ nt2Pass :: ModGuts -> CoreM ModGuts
 nt2Pass g = do
     nttc <- lookupNTTyCon (mg_rdr_env g)
     --putMsg (ppr nttc)
-    binds' <- mapM (traverseBind (replaceDeriveThisNT nttc)) (mg_binds g)
+    binds' <- mapM (traverseBind (replaceDeriveThisNT (mg_rdr_env g) nttc)) (mg_binds g)
     return $ g { mg_binds = binds' }
 
 --
@@ -169,19 +169,40 @@ findCoercion :: Type -> Type -> [Coercion] -> Maybe Coercion
 findCoercion t1 t2 = find go
   where go c = let Pair t1' t2' = coercionKind c in t1' `eqType` t1 && t2' `eqType` t2
 
+-- Check if the user is able to see the data constructors of the given type.
+-- It seems that the type constructors for lists do not occur in the
+-- GlobalRdrEnv, so we assume that they are always ok.
+-- NOTE: It is not possible to have an abstract data type without type
+-- constructors.
+checkDataConsInScope :: GlobalRdrEnv -> TyCon -> CoreM ()
+checkDataConsInScope env tc | tc == listTyCon = return ()
+checkDataConsInScope env tc = mapM_ (checkInScope env . dataConName) (tyConDataCons tc)
+
+checkInScope :: GlobalRdrEnv -> Name -> CoreM ()
+checkInScope env n = case lookupGRE_Name env n of
+    [gre] -> return () -- TODO: Mark name as used (not possible in a plugin, I guess)
+    [] -> err_not_in_scope
+    _ -> panic "checkInScope: Got more GREs than expected "
+  where
+    err_not_in_scope =
+        pprPgmError "Cannot derive:" $
+            ppr n <+> text "Not in scope" $$ ppr (globalRdrEnvElts env)
+
 -- Given two types (and a few coercions to use), tries to construct a coercion
 -- between them
-deriveNT :: TyCon -> [Coercion] -> Type -> Type -> CoreM Coercion
-deriveNT nttc cos t1 t2
+deriveNT :: GlobalRdrEnv -> TyCon -> [Coercion] -> Type -> Type -> CoreM Coercion
+deriveNT env nttc cos t1 t2
     | t1 `eqType` t2 = do
         return $ Refl t1
     | Just (tc1,tyArgs1) <- splitTyConApp_maybe t1,
       Just (tc2,tyArgs2) <- splitTyConApp_maybe t2,
       tc1 == tc2 = do
-        TyConAppCo tc1 <$> sequence (zipWith (deriveNT nttc cos) tyArgs1 tyArgs2)
+        checkDataConsInScope env tc1
+        TyConAppCo tc1 <$> sequence (zipWith (deriveNT env nttc cos) tyArgs1 tyArgs2)
     | Just (tc,tyArgs) <- splitTyConApp_maybe t1 = do
         case unwrapNewTyCon_maybe tc of
             Just (tyVars, tyExpanded, coAxiom) -> do
+                checkDataConsInScope env tc
                 -- putMsg (ppr (unwrapNewTyCon_maybe tc))
                 let rhs = newTyConInstRhs tc tyArgs
                 if t2 `eqType` rhs
@@ -212,16 +233,16 @@ isNTType nttc t | Just (tc,[t1,t2]) <- splitTyConApp_maybe t, tc == nttc = Just 
 
 
 -- Creates the body of a "deriving foo :: ... -> NT t1 t2" function
-deriveNTFun :: TyCon -> [Coercion] -> Type -> CoreM CoreExpr
-deriveNTFun nttc cos t
+deriveNTFun :: GlobalRdrEnv -> TyCon -> [Coercion] -> Type -> CoreM CoreExpr
+deriveNTFun env nttc cos t
     | Just (at, rt) <- splitFunTy_maybe t = do
         case isNTType nttc at of
             Just (t1,t2) -> do
                 lamNT nttc "nt" t1 t2 $ \co -> 
-                    deriveNTFun nttc (CoVarCo co:cos) rt
+                    deriveNTFun env nttc (CoVarCo co:cos) rt
             Nothing -> err_non_NT_argument at
     | Just (t1,t2) <- isNTType nttc t = do
-        conNT nttc $ deriveNT nttc cos t1 t2
+        conNT nttc $ deriveNT env nttc cos t1 t2
     | otherwise = err_no_idea_what_to_do
   where
     err_non_NT_argument at = 
@@ -230,10 +251,9 @@ deriveNTFun nttc cos t
         pprPgmError "deriveThisNT does not know how to derive code of type:" $  ppr t
 
 -- Replace every occurrence of the magic 'deriveThisNT' by a valid implementation
-replaceDeriveThisNT :: TyCon -> CoreExpr -> CoreM (Maybe CoreExpr)
-replaceDeriveThisNT nttc e@(App (Var f) (Type t))
-    | getOccString f == "deriveThisNT" = Just <$> deriveNTFun nttc [] t
-replaceDeriveThisNT _ e = do
+replaceDeriveThisNT env nttc e@(App (Var f) (Type t))
+    | getOccString f == "deriveThisNT" = Just <$> deriveNTFun env nttc [] t
+replaceDeriveThisNT _ _ e = do
     --putMsg (ppr e)
     return Nothing
 

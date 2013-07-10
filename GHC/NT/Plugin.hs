@@ -170,12 +170,13 @@ findCoercion t1 t2 = find go
   where go c = let Pair t1' t2' = coercionKind c in t1' `eqType` t1 && t2' `eqType` t2
 
 -- Check if the user is able to see the data constructors of the given type.
--- It seems that the type constructors for lists do not occur in the
+-- It seems that the type constructors for lists and tuples do not occur in the
 -- GlobalRdrEnv, so we assume that they are always ok.
 -- NOTE: It is not possible to have an abstract data type without type
 -- constructors.
 checkDataConsInScope :: GlobalRdrEnv -> TyCon -> CoreM ()
 checkDataConsInScope env tc | tc == listTyCon = return ()
+checkDataConsInScope env tc | isTupleTyCon tc = return ()
 checkDataConsInScope env tc = mapM_ (checkInScope env . dataConName) (tyConDataCons tc)
 
 checkInScope :: GlobalRdrEnv -> Name -> CoreM ()

@@ -5,6 +5,9 @@ import GHC.NT
 listNT :: NT a b -> NT [a] [b]
 listNT = deriveThisNT
 
+tupleNT :: NT a b -> NT (a,c) (b,c)
+tupleNT = deriveThisNT
+
 newtype Age = Age Int deriving Show
 
 ageNT :: NT Age Int
@@ -45,4 +48,5 @@ main = do
     --print $ coerce bar (MyList [a])
     print $ coerce (sym rNT) []
     print $ coerce (fNT (sym ageNT)) (F 1 2 3)
+    tupleNT `seq` return ()
 

@@ -274,7 +274,7 @@ traverse f e
         Cast e co            -> Cast <$> traverse f e <*> (return co)
         Lam b e              -> Lam b <$> traverse f e
         Let bind e           -> Let <$> traverseBind f bind <*> traverse f e
-        Case scrut bndr ty alts -> Case scrut bndr ty <$> mapM (\(a,b,c) -> (a,b,) <$> traverse f c) alts 
+        Case scrut bndr ty alts -> Case <$> traverse f scrut <*> pure bndr <*> pure ty <*> mapM (\(a,b,c) -> (a,b,) <$> traverse f c) alts 
     where f' x = do
             r <- f x
             return (fromMaybe x r)

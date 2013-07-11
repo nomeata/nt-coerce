@@ -1,6 +1,7 @@
 {-# OPTIONS_GHC -fplugin GHC.NT.Plugin #-}
 
 import GHC.NT
+import Abstract
 
 listNT :: NT a b -> NT [a] [b]
 listNT = deriveThisNT
@@ -30,10 +31,30 @@ rNT = deriveThisNT
 bar :: NT (MyList Age) [Int]
 bar = deriveThisNT
 
+data Tree a = T a [Tree a] deriving Show
+newtype Tree' a = Tree' (Tree a) deriving Show
+
+treeNT :: NT a b -> NT (Tree a) (Tree b)
+treeNT = deriveThisNT
+
+tree'NT :: NT (Tree' a) (Tree a)
+tree'NT = deriveThisNT
+
+tree'NT' :: NT a b -> NT (Tree' a) (Tree' b)
+tree'NT' = deriveThisNT
+
 data F a b c = F a b c deriving Show
 
 fNT :: NT a a' -> NT (F a b c) (F a' b c)
 fNT = deriveThisNT
+
+
+badNT :: NT a b -> NT (Abs1 a) (Abs1 b)
+badNT = deriveThisNT
+
+data WrappedBad a = WrappedBad (Abs1 a)
+wrappedBadNT :: NT a b -> NT (WrappedBad a) (WrappedBad b)
+wrappedBadNT = deriveThisNT
 
 main = do
     let n = 1 :: Int
@@ -48,5 +69,10 @@ main = do
     --print $ coerce bar (MyList [a])
     print $ coerce (sym rNT) []
     print $ coerce (fNT (sym ageNT)) (F 1 2 3)
-    tupleNT `seq` return ()
+    tree'NT `seq` tree'NT' `seq` tupleNT `seq` return ()
+    -- badNT `seq` return ()
+    wrappedBadNT `seq` return ()
+    --let t1 = T 1 []
+    --print $ coerce (trans (sym tree'NT) (sym (tree'NT' ageNT))) t1
+    --print $ coerce (trans (treeNT (sym ageNT)) (sym tree'NT)) t1
 

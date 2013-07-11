@@ -187,19 +187,35 @@ checkInScope env n = case lookupGRE_Name env n of
   where
     err_not_in_scope =
         pprPgmError "Cannot derive:" $
-            ppr n <+> text "Not in scope" $$ ppr (globalRdrEnvElts env)
+            ppr n <+> text "Not in scope" -- $$ ppr (globalRdrEnvElts env)
 
 -- Given two types (and a few coercions to use), tries to construct a coercion
 -- between them
-deriveNT :: GlobalRdrEnv -> TyCon -> [Coercion] -> Type -> Type -> CoreM Coercion
-deriveNT env nttc cos t1 t2
+deriveNT :: GlobalRdrEnv -> TyCon -> [Coercion] -> [TyCon] -> Type -> Type -> CoreM Coercion
+deriveNT env nttc cos seen t1 t2
     | t1 `eqType` t2 = do
+        putMsg $ text "done, types are equal" <+> ppr t1
         return $ Refl t1
     | Just (tc1,tyArgs1) <- splitTyConApp_maybe t1,
       Just (tc2,tyArgs2) <- splitTyConApp_maybe t2,
+      tc1 == tc2,
+      tc1 `elem` seen = do
+        err_recursive_tycon tc1
+    | Just (tc1,tyArgs1) <- splitTyConApp_maybe t1,
+      Just (tc2,tyArgs2) <- splitTyConApp_maybe t2,
       tc1 == tc2 = do
+        putMsg $ text "checking tc" <+> ppr tc1 <+> text "params" <+> ppr (tyArgs1, tyArgs2)
+        -- First we check if the data constructors are in scope
         checkDataConsInScope env tc1
-        TyConAppCo tc1 <$> sequence (zipWith (deriveNT env nttc cos) tyArgs1 tyArgs2)
+        -- And then that we have witnesses for the equality of all their parameters
+        -- TODO: Prevent looping!
+        forM_ (tyConDataCons tc1) $ \dc -> do
+            putMsg $ text "checking" <+> ppr dc <+> text "using" <+> ppr (map coercionKind cos)
+            forM_ (zip (dataConInstArgTys dc tyArgs1) (dataConInstArgTys dc tyArgs2)) $ \(t1,t2) -> do
+                putMsg $ text "comparing" <+> ppr t1 <+> ppr t2
+                deriveNT env nttc cos (tc1:seen) t1 t2
+        TyConAppCo tc1 <$>
+            sequence (zipWith (deriveNT env nttc cos seen) tyArgs1 tyArgs2)
     | Just (tc,tyArgs) <- splitTyConApp_maybe t1 = do
         case unwrapNewTyCon_maybe tc of
             Just (tyVars, tyExpanded, coAxiom) -> do
@@ -211,6 +227,7 @@ deriveNT env nttc cos t1 t2
                   else err_wrong_newtype rhs
             Nothing -> err_not_newtype
     | Just usable <- findCoercion t1 t2 cos = do
+        putMsg $ text "done, found" <+> ppr (coercionKind usable)
         return usable
     | otherwise = err_no_idea_what_to_do
   where
@@ -225,6 +242,9 @@ deriveNT env nttc cos t1 t2
     err_no_idea_what_to_do =
         pprSorry "deriveThisNT does not know how to derive an NT value relating" $  
             ppr t1 $$ ppr t2
+    err_recursive_tycon tc =
+        pprSorry "deriveThisNT cannot handle all recursive data types yet, sorry" $
+            ppr tc
 
 
 -- Check if a type if of type NT t1 t2, and returns t1 and t2
@@ -243,7 +263,7 @@ deriveNTFun env nttc cos t
                     deriveNTFun env nttc (CoVarCo co:cos) rt
             Nothing -> err_non_NT_argument at
     | Just (t1,t2) <- isNTType nttc t = do
-        conNT nttc $ deriveNT env nttc cos t1 t2
+        conNT nttc $ deriveNT env nttc cos [] t1 t2
     | otherwise = err_no_idea_what_to_do
   where
     err_non_NT_argument at = 

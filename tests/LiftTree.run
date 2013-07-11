@@ -1,0 +1,2 @@
+ghc -dcore-lint -package ghc -itests --make tests/LiftTree.hs -main-is LiftTree >/dev/null &&
+tests/LiftTree

@@ -1,0 +1,5 @@
+ghc: sorry! (unimplemented feature or known bug)
+  (GHC version 7.6.3 for x86_64-unknown-linux):
+	deriveThisNT cannot handle all recursive data types yet, sorry
+    LiftNested.Bal
+

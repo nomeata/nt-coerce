@@ -1,0 +1,2 @@
+ghc -dcore-lint -package ghc -itests --make tests/failing/LiftAbstractIllegal.hs -main-is LiftAbstractIllegal >/dev/null &&
+tests/LiftAbstractIllegal

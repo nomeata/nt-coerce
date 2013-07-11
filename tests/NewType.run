@@ -1,0 +1,2 @@
+ghc -dcore-lint -package ghc --make tests/Newtype.hs -main-is Newtype >/dev/null &&
+tests/Newtype

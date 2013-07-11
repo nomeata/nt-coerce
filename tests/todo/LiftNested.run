@@ -1,0 +1,2 @@
+ghc -dcore-lint -package ghc -itests -itests/todo LiftNested --make -main-is LiftNested >/dev/null &&
+tests/todo/LiftNested

@@ -207,15 +207,19 @@ deriveNT env nttc cos seen t1 t2
       tc1 == tc2 = do
         -- First we check if the data constructors are in scope
         checkDataConsInScope env tc1
-        -- Then we generate the witness for this type
-        c <- TyConAppCo tc1 <$>
-            sequence (zipWith (deriveNT env nttc cos seen) tyArgs1 tyArgs2)
+        -- We generate witnesses for the type arguments
+        cs <- sequence (zipWith (deriveNT env nttc cos seen) tyArgs1 tyArgs2)
+        -- and for the whole type
+        let c = TyConAppCo tc1 cs
         -- And finally see if the coercion of the arguments is justified. We
-        -- inclue the generated witness in the list of known coercions, to
-        -- support simple recursive types.
+        -- include the generated witness in the list of known coercions, to
+        -- support simple recursive types. We also include the coercions of the
+        -- type con arguments, so that the search only covers the type
+        -- constructors that are mentioned in the definition of tc1, but not
+        -- those from the arguments.
         forM_ (tyConDataCons tc1) $ \dc -> do
             forM_ (zip (dataConInstArgTys dc tyArgs1) (dataConInstArgTys dc tyArgs2)) $ \(t1,t2) -> do
-                deriveNT env nttc (c:cos) (tc1:seen) t1 t2
+                deriveNT env nttc (c:cs++cos) (tc1:seen) t1 t2
         return c
     | Just (tc,tyArgs) <- splitTyConApp_maybe t1 = do
         case unwrapNewTyCon_maybe tc of

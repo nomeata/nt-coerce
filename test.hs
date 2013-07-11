@@ -98,6 +98,6 @@ main = do
     let t1 = T 1 []
     print $ coerce (trans (sym tree'NT) (sym (tree'NT' ageNT))) t1
     print $ coerce (trans (treeNT (sym ageNT)) (sym tree'NT)) t1
-    -- nestedNT `seq` return ()
+    nestedNT `seq` return ()
     -- balNT `seq` return ()
 

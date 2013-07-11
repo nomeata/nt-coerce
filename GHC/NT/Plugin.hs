@@ -194,8 +194,9 @@ checkInScope env n = case lookupGRE_Name env n of
 deriveNT :: GlobalRdrEnv -> TyCon -> [Coercion] -> [TyCon] -> Type -> Type -> CoreM Coercion
 deriveNT env nttc cos seen t1 t2
     | t1 `eqType` t2 = do
-        putMsg $ text "done, types are equal" <+> ppr t1
         return $ Refl t1
+    | Just usable <- findCoercion t1 t2 cos = do
+        return usable
     | Just (tc1,tyArgs1) <- splitTyConApp_maybe t1,
       Just (tc2,tyArgs2) <- splitTyConApp_maybe t2,
       tc1 == tc2,
@@ -204,18 +205,18 @@ deriveNT env nttc cos seen t1 t2
     | Just (tc1,tyArgs1) <- splitTyConApp_maybe t1,
       Just (tc2,tyArgs2) <- splitTyConApp_maybe t2,
       tc1 == tc2 = do
-        putMsg $ text "checking tc" <+> ppr tc1 <+> text "params" <+> ppr (tyArgs1, tyArgs2)
         -- First we check if the data constructors are in scope
         checkDataConsInScope env tc1
-        -- And then that we have witnesses for the equality of all their parameters
-        -- TODO: Prevent looping!
-        forM_ (tyConDataCons tc1) $ \dc -> do
-            putMsg $ text "checking" <+> ppr dc <+> text "using" <+> ppr (map coercionKind cos)
-            forM_ (zip (dataConInstArgTys dc tyArgs1) (dataConInstArgTys dc tyArgs2)) $ \(t1,t2) -> do
-                putMsg $ text "comparing" <+> ppr t1 <+> ppr t2
-                deriveNT env nttc cos (tc1:seen) t1 t2
-        TyConAppCo tc1 <$>
+        -- Then we generate the witness for this type
+        c <- TyConAppCo tc1 <$>
             sequence (zipWith (deriveNT env nttc cos seen) tyArgs1 tyArgs2)
+        -- And finally see if the coercion of the arguments is justified. We
+        -- inclue the generated witness in the list of known coercions, to
+        -- support simple recursive types.
+        forM_ (tyConDataCons tc1) $ \dc -> do
+            forM_ (zip (dataConInstArgTys dc tyArgs1) (dataConInstArgTys dc tyArgs2)) $ \(t1,t2) -> do
+                deriveNT env nttc (c:cos) (tc1:seen) t1 t2
+        return c
     | Just (tc,tyArgs) <- splitTyConApp_maybe t1 = do
         case unwrapNewTyCon_maybe tc of
             Just (tyVars, tyExpanded, coAxiom) -> do
@@ -226,9 +227,6 @@ deriveNT env nttc cos seen t1 t2
                   then return $ mkAxInstCo coAxiom tyArgs
                   else err_wrong_newtype rhs
             Nothing -> err_not_newtype
-    | Just usable <- findCoercion t1 t2 cos = do
-        putMsg $ text "done, found" <+> ppr (coercionKind usable)
-        return usable
     | otherwise = err_no_idea_what_to_do
   where
     err_wrong_newtype rhs =

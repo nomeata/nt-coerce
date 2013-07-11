@@ -9,6 +9,9 @@ listNT = deriveThisNT
 tupleNT :: NT a b -> NT (a,c) (b,c)
 tupleNT = deriveThisNT
 
+nestedNT :: NT a a' -> NT ((a,b),c) ((a',b),c)
+nestedNT = deriveThisNT
+
 newtype Age = Age Int deriving Show
 
 ageNT :: NT Age Int
@@ -50,11 +53,21 @@ fNT = deriveThisNT
 
 
 badNT :: NT a b -> NT (Abs1 a) (Abs1 b)
-badNT = deriveThisNT
+badNT = deriveThisNT -- rejected 
 
-data WrappedBad a = WrappedBad (Abs1 a)
+data WrappedBad a = WrappedBad (Abs1 a) deriving Show
 wrappedBadNT :: NT a b -> NT (WrappedBad a) (WrappedBad b)
-wrappedBadNT = deriveThisNT
+wrappedBadNT = deriveThisNT -- rejected
+
+data WrappedAbstract a = WrappedAbstract (Abs2 a) deriving Show
+wrappedAbstactBadNT :: NT a b -> NT (WrappedAbstract a) (WrappedAbstract b)
+wrappedAbstactBadNT = deriveThisNT -- rejected
+
+wrappedAbstactNTRaw :: NT a b -> NT (Abs2 a) (Abs2 b) -> NT (WrappedAbstract a) (WrappedAbstract b)
+wrappedAbstactNTRaw = deriveThisNT -- accepted
+
+wrappedAbstactNT :: NT a b -> NT (WrappedAbstract a) (WrappedAbstract b)
+wrappedAbstactNT nt = wrappedAbstactNTRaw nt (abs2NT nt)
 
 main = do
     let n = 1 :: Int
@@ -71,8 +84,14 @@ main = do
     print $ coerce (fNT (sym ageNT)) (F 1 2 3)
     tree'NT `seq` tree'NT' `seq` tupleNT `seq` return ()
     -- badNT `seq` return ()
-    wrappedBadNT `seq` return ()
-    --let t1 = T 1 []
-    --print $ coerce (trans (sym tree'NT) (sym (tree'NT' ageNT))) t1
-    --print $ coerce (trans (treeNT (sym ageNT)) (sym tree'NT)) t1
+    -- wrappedBadNT `seq` return ()
+    -- wrappedAbstactBadNT `seq` return ()
+    wrappedAbstactNT `seq` return ()
+    let wa = WrappedAbstract abs2
+    print wa
+    print $ coerce (sym (wrappedAbstactNT ageNT)) wa
+    let t1 = T 1 []
+    print $ coerce (trans (sym tree'NT) (sym (tree'NT' ageNT))) t1
+    print $ coerce (trans (treeNT (sym ageNT)) (sym tree'NT)) t1
+    -- nestedNT `seq` return ()
 

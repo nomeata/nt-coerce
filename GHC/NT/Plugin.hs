@@ -187,7 +187,8 @@ checkInScope env n = case lookupGRE_Name env n of
   where
     err_not_in_scope =
         pprPgmError "Cannot derive:" $
-            ppr n <+> text "Not in scope" -- $$ ppr (globalRdrEnvElts env)
+            withPprStyle defaultUserStyle $
+                ppr n <+> text "Not in scope" -- $$ ppr (globalRdrEnvElts env)
 
 -- Given two types (and a few coercions to use), tries to construct a coercion
 -- between them
@@ -244,9 +245,10 @@ deriveNT env nttc cos seen t1 t2
     err_no_idea_what_to_do =
         pprSorry "deriveThisNT does not know how to derive an NT value relating" $  
             ppr t1 $$ ppr t2
-    err_recursive_tycon tc =
+    err_recursive_tycon tc = 
         pprSorry "deriveThisNT cannot handle all recursive data types yet, sorry" $
-            ppr tc
+            withPprStyle defaultUserStyle $
+                ppr (tyConName tc)
 
 
 -- Check if a type if of type NT t1 t2, and returns t1 and t2

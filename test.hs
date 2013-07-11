@@ -12,6 +12,11 @@ tupleNT = deriveThisNT
 nestedNT :: NT a a' -> NT ((a,b),c) ((a',b),c)
 nestedNT = deriveThisNT
 
+data Bal a = Leaf a | Node (Bal (a,a))
+
+balNT :: NT a b -> NT (Bal a) (Bal b)
+balNT = deriveThisNT
+
 newtype Age = Age Int deriving Show
 
 ageNT :: NT Age Int
@@ -94,4 +99,5 @@ main = do
     print $ coerce (trans (sym tree'NT) (sym (tree'NT' ageNT))) t1
     print $ coerce (trans (treeNT (sym ageNT)) (sym tree'NT)) t1
     -- nestedNT `seq` return ()
+    -- balNT `seq` return ()
 
